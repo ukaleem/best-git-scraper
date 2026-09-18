@@ -1,0 +1,6 @@
+{
+  "name": "GitHub Intelligence & Repo Discovery Engine",
+  "description": "Deep search, discovery, and commercial potential evaluation of top GitHub repositories for developers and software agencies, with monetization guides, live trending data, and fork blueprints.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
