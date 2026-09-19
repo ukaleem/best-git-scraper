@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   GitFork, Sparkles, Bookmark, Terminal, Shield, RefreshCw, 
-  Search, Layers, ExternalLink, Code2, AlertCircle, Compass 
+  Search, Layers, ExternalLink, Code2, AlertCircle, Compass,
+  User, LogIn, LogOut, ShieldCheck, Clock, UserCheck
 } from 'lucide-react';
+import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from './lib/firebase';
+import { useAuth } from './lib/AuthContext';
 import { RepositoryItem, SavedRepo, SavedCategory } from './types';
 import { RepoCard } from './components/RepoCard';
 import { DeepSearchHeader } from './components/DeepSearchHeader';
@@ -10,8 +14,12 @@ import { ForkModal } from './components/ForkModal';
 import { AnalysisModal } from './components/AnalysisModal';
 import { CustomAnalyzeModal } from './components/CustomAnalyzeModal';
 import { SavedReposDrawer } from './components/SavedReposDrawer';
+import { AuthModal } from './components/AuthModal';
+import { AdminCRMModal } from './components/AdminCRMModal';
 
 export default function App() {
+  const { user, userProfile, isAdmin, isVerified, logout } = useAuth();
+
   const [repos, setRepos] = useState<RepositoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAiSearching, setIsAiSearching] = useState(false);
@@ -30,8 +38,11 @@ export default function App() {
   const [selectedAuditRepo, setSelectedAuditRepo] = useState<RepositoryItem | null>(null);
   const [isCustomAnalyzeOpen, setIsCustomAnalyzeOpen] = useState(false);
   const [isSavedDrawerOpen, setIsSavedDrawerOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+  const [isAdminCrmOpen, setIsAdminCrmOpen] = useState(false);
 
-  // Saved repositories in localStorage
+  // Saved / Favorite repositories (synced with Firebase if logged in, otherwise localStorage)
   const [savedRepos, setSavedRepos] = useState<SavedRepo[]>(() => {
     try {
       const stored = localStorage.getItem('agency_saved_repos');
@@ -41,12 +52,60 @@ export default function App() {
     }
   });
 
-  const saveToLocalStorage = (items: SavedRepo[]) => {
+  // Sync favorites with Firestore when user is authenticated
+  useEffect(() => {
+    if (!user) return;
+
+    const favoritesRef = collection(db, 'users', user.uid, 'favorites');
+    const unsubFavorites = onSnapshot(favoritesRef, (snapshot) => {
+      const list: SavedRepo[] = [];
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        if (d.repo) {
+          list.push({
+            repo: d.repo,
+            category: d.category || 'to-fork',
+            savedAt: d.savedAt || new Date().toISOString(),
+            notes: d.notes
+          });
+        }
+      });
+      if (list.length > 0) {
+        setSavedRepos(list);
+      }
+    }, (err) => {
+      console.warn('Firestore favorites sync note:', err.message);
+    });
+
+    return () => unsubFavorites();
+  }, [user]);
+
+  const saveToStorageOrCloud = async (items: SavedRepo[], modifiedRepo?: RepositoryItem, isRemoval?: boolean, newCat?: SavedCategory) => {
     setSavedRepos(items);
     try {
       localStorage.setItem('agency_saved_repos', JSON.stringify(items));
     } catch {
       // ignore
+    }
+
+    // Persist to user's Firebase account if signed in
+    if (user && modifiedRepo) {
+      const favDocRef = doc(db, 'users', user.uid, 'favorites', modifiedRepo.id);
+      try {
+        if (isRemoval) {
+          await deleteDoc(favDocRef);
+        } else {
+          await setDoc(favDocRef, {
+            id: modifiedRepo.id,
+            userId: user.uid,
+            repo: modifiedRepo,
+            category: newCat || 'to-fork',
+            savedAt: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        console.error('Error updating favorite in Firestore:', err);
+      }
     }
   };
 
@@ -95,7 +154,7 @@ export default function App() {
     }
   };
 
-  // Handle AI Deep Search across Internet & Creator channels
+  // Handle AI Deep Search
   const handleDeepSearchAI = async (prompt: string, focus: string, timeframe: string) => {
     setIsAiSearching(true);
     setError(null);
@@ -134,16 +193,22 @@ export default function App() {
 
   // Save / Bookmark toggle
   const handleSaveToggle = (repo: RepositoryItem, category: SavedCategory) => {
+    // If user is not logged in, optionally prompt login or allow guest bookmark
     const existingIndex = savedRepos.findIndex((s) => s.repo.id === repo.id);
     let updated: SavedRepo[];
+    let isRemoval = false;
+    let finalCat = category;
+
     if (existingIndex >= 0) {
       if (savedRepos[existingIndex].category === category) {
         // Remove if clicking same category
         updated = savedRepos.filter((s) => s.repo.id !== repo.id);
+        isRemoval = true;
       } else {
         // Update category
         updated = [...savedRepos];
         updated[existingIndex] = { ...updated[existingIndex], category };
+        finalCat = category;
       }
     } else {
       updated = [
@@ -155,16 +220,40 @@ export default function App() {
         },
       ];
     }
-    saveToLocalStorage(updated);
+    saveToStorageOrCloud(updated, repo, isRemoval, finalCat);
   };
 
   const handleRemoveSaved = (id: string) => {
+    const target = savedRepos.find((s) => s.repo.id === id);
     const updated = savedRepos.filter((s) => s.repo.id !== id);
-    saveToLocalStorage(updated);
+    saveToStorageOrCloud(updated, target?.repo, true);
   };
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col selection:bg-indigo-500/30 selection:text-indigo-200">
+      {/* Verification Notice Banner for logged in user */}
+      {user && !isVerified && (
+        <div className="bg-amber-950/70 border-b border-amber-800/80 px-4 py-2.5 text-xs text-amber-200">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>Account Pending Verification:</strong> Your registration has been sent to the Admin CRM. 
+                Full commercial deployment capabilities unlock upon admin verification.
+              </span>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={() => setIsAdminCrmOpen(true)}
+                className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 rounded text-[11px] font-semibold text-amber-300 transition-colors"
+              >
+                Open Admin CRM
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top Navigation */}
       <header className="sticky top-0 z-40 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
@@ -187,30 +276,92 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Refresh Feed */}
             <button
               id="refresh-trending-btn"
               onClick={() => fetchTrendingRepos()}
               disabled={loading}
-              className="p-2 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-xl transition"
+              className="p-2 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-xl transition cursor-pointer"
               title="Refresh repo feed"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
 
+            {/* Agency Favorites Pipeline */}
             <button
               id="open-saved-drawer-btn"
               onClick={() => setIsSavedDrawerOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 rounded-xl text-xs font-semibold border border-neutral-800 transition"
+              className="flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 rounded-xl text-xs font-semibold border border-neutral-800 transition cursor-pointer"
             >
               <Bookmark className="w-4 h-4 text-indigo-400" />
-              <span>Agency Pipeline</span>
+              <span className="hidden sm:inline">Favorites</span>
               {savedRepos.length > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-mono">
                   {savedRepos.length}
                 </span>
               )}
             </button>
+
+            {/* Admin CRM Button */}
+            {isAdmin && (
+              <button
+                id="open-admin-crm-btn"
+                onClick={() => setIsAdminCrmOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border border-purple-800/60 rounded-xl text-xs font-semibold transition cursor-pointer"
+                title="Open Admin CRM & User Approvals"
+              >
+                <ShieldCheck className="w-4 h-4 text-purple-400" />
+                <span className="hidden sm:inline">Admin CRM</span>
+              </button>
+            )}
+
+            {/* Authentication Login/Register or Profile State */}
+            {user ? (
+              <div className="flex items-center gap-2 pl-2 border-l border-neutral-800">
+                <div className="hidden md:flex flex-col text-right">
+                  <span className="text-xs font-medium text-neutral-200 truncate max-w-[130px]">
+                    {userProfile?.displayName || user.email?.split('@')[0]}
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-mono">
+                    {isVerified ? 'Verified' : 'Pending Review'}
+                  </span>
+                </div>
+                <button
+                  id="user-logout-btn"
+                  onClick={logout}
+                  className="p-2 text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 rounded-xl border border-neutral-800 transition cursor-pointer"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 pl-2 border-l border-neutral-800">
+                <button
+                  id="open-login-btn"
+                  onClick={() => {
+                    setAuthModalMode('login');
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 rounded-xl text-xs font-semibold border border-neutral-800 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Login</span>
+                </button>
+                <button
+                  id="open-register-btn"
+                  onClick={() => {
+                    setAuthModalMode('register');
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-950 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <User className="w-3.5 h-3.5" />
+                  <span>Register</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -249,7 +400,7 @@ export default function App() {
             </div>
             <button
               onClick={() => setNotice(null)}
-              className="text-xs text-amber-400 hover:text-amber-200 font-medium"
+              className="text-xs text-amber-400 hover:text-amber-200 font-medium cursor-pointer"
             >
               Dismiss
             </button>
@@ -265,7 +416,7 @@ export default function App() {
             </div>
             <button
               onClick={() => fetchTrendingRepos()}
-              className="text-xs text-red-300 underline font-medium hover:text-red-100"
+              className="text-xs text-red-300 underline font-medium hover:text-red-100 cursor-pointer"
             >
               Reload
             </button>
@@ -310,7 +461,7 @@ export default function App() {
                 setActiveSearchTerm('');
                 fetchTrendingRepos('all', 'stars');
               }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold cursor-pointer"
             >
               Reset Filters & Reload
             </button>
@@ -340,11 +491,22 @@ export default function App() {
       <footer className="border-t border-neutral-900 py-6 text-center text-xs text-neutral-600 font-mono">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>RepoRadar Developer & Agency Intelligence Engine</span>
-          <span>Powered by GitHub Public API & Google Gemini 3.8 Flash</span>
+          <span>Secured with Firebase Auth & Cloud Firestore Verification</span>
         </div>
       </footer>
 
       {/* Modals and Drawers */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        initialMode={authModalMode}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+
+      <AdminCRMModal
+        isOpen={isAdminCrmOpen}
+        onClose={() => setIsAdminCrmOpen(false)}
+      />
+
       <ForkModal
         repo={selectedForkRepo}
         onClose={() => setSelectedForkRepo(null)}
