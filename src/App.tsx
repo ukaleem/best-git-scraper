@@ -17,6 +17,8 @@ export default function App() {
   const [isAiSearching, setIsAiSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [notice, setNotice] = useState<string | null>(null);
+
   // Filters
   const [activeCategory, setActiveCategory] = useState('all');
   const [activeSort, setActiveSort] = useState('stars');
@@ -97,20 +99,34 @@ export default function App() {
   const handleDeepSearchAI = async (prompt: string, focus: string, timeframe: string) => {
     setIsAiSearching(true);
     setError(null);
+    setNotice(null);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+
       const res = await fetch('/api/ai/deep-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, focus, timeframe }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+
       const data = await res.json();
       if (data.success && Array.isArray(data.repos) && data.repos.length > 0) {
         setRepos(data.repos);
+        if (data.notice) {
+          setNotice(data.notice);
+        }
       } else {
         setError(data.error || 'AI Deep Search returned no results. Try adjusting the query.');
       }
     } catch (err: any) {
-      setError(err.message || 'AI Deep Search failed.');
+      if (err.name === 'AbortError') {
+        setError('Search request timed out. Please try a simpler query or select a preset.');
+      } else {
+        setError(err.message || 'AI Deep Search failed.');
+      }
     } finally {
       setIsAiSearching(false);
     }
@@ -223,6 +239,22 @@ export default function App() {
           isAiSearching={isAiSearching}
           totalCount={repos.length}
         />
+
+        {/* Notice message alert */}
+        {notice && !error && (
+          <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/60 flex items-start gap-3 text-xs text-amber-200">
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-semibold text-amber-300">Discovery update:</span> {notice}
+            </div>
+            <button
+              onClick={() => setNotice(null)}
+              className="text-xs text-amber-400 hover:text-amber-200 font-medium"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Error message alert */}
         {error && (
