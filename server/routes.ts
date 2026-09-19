@@ -1,6 +1,8 @@
-import { Router, Request, Response } from 'express';
-import { CURATED_AGENCY_REPOS, RepositoryItem } from './curatedRepos';
-import { getGemini } from './gemini';
+import { Router } from 'express';
+import type { Request, Response } from 'express';
+import { CURATED_AGENCY_REPOS } from './curatedRepos.ts';
+import type { RepositoryItem } from './curatedRepos.ts';
+import { getGemini } from './gemini.ts';
 
 export const apiRouter = Router();
 

@@ -17,7 +17,7 @@ A high-performance repository intelligence and discovery platform built for deve
 
 Before running the application, make sure you have:
 
-1. **Node.js**: Version `18.0.0` or higher (`20.x` or `22.x` recommended).
+1. **Node.js**: `22.18` or higher (tested on `24.x`). The production server (`npm start`) runs `server.ts` directly with Node's built-in TypeScript support, which older versions don't enable by default.
    - Check your version: `node -v`
 2. **Package Manager**: `npm` (comes with Node.js), `pnpm`, or `bun`.
 3. **Google Gemini API Key**:
@@ -187,7 +187,8 @@ The repository includes a ready-to-use **`vercel.json`**:
 | :--- | :---: | :--- |
 | `GEMINI_API_KEY` | **Yes** | Google Gemini API key used for AI Deep Search across dev ecosystems and commercial repository audits. Get from [Google AI Studio](https://aistudio.google.com). |
 | `GITHUB_TOKEN` | Optional | GitHub personal access token (classic or fine-grained with public read access). Raises GitHub API limit from 60 to 5,000 requests/hour. |
-| `PORT` | Optional | Server port for standalone Node server (defaults to `3000`). |
+
+> The port is currently fixed at `3000` for both `npm run dev` and `npm start` (`PORT` is not read).
 
 ---
 
@@ -196,7 +197,8 @@ The repository includes a ready-to-use **`vercel.json`**:
 ```
 ├── api/
 │   └── index.ts               # Vercel Serverless Function entry point
-├── public/                    # Static public assets
+├── AGENTS.md                  # Architecture, gotchas & known issues (start here if you're an AI agent)
+├── CLAUDE.md                  # Points Claude Code at AGENTS.md
 ├── server/
 │   ├── curatedRepos.ts        # Curated catalog of agency & dev-ready repos
 │   ├── gemini.ts              # Gemini 3.8 Flash SDK client & timeout configuration
