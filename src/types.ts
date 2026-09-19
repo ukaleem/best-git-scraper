@@ -55,3 +55,19 @@ export interface SavedRepo {
   savedAt: string;
   notes?: string;
 }
+
+export type UserRole = 'admin' | 'user';
+export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  isVerified: boolean;
+  verificationStatus: VerificationStatus;
+  createdAt: string;
+  updatedAt?: string;
+  approvedBy?: string;
+  rejectionReason?: string;
+}

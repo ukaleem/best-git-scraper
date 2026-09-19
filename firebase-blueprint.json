@@ -1,0 +1,51 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile with role and admin verification approval status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "isVerified": { "type": "boolean" },
+        "verificationStatus": { "type": "string", "enum": ["approved", "pending", "rejected"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "approvedBy": { "type": "string" }
+      },
+      "required": ["uid", "email", "role", "isVerified", "verificationStatus", "createdAt"]
+    },
+    "UserFavorite": {
+      "title": "User Favorite Repository",
+      "description": "Bookmarked repository saved to a user's account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "repoId": { "type": "string" },
+        "name": { "type": "string" },
+        "fullName": { "type": "string" },
+        "htmlUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "stars": { "type": "number" },
+        "language": { "type": "string" },
+        "category": { "type": "string" },
+        "agencyFitScore": { "type": "number" },
+        "savedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "repoId", "name", "htmlUrl", "savedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document storing verification status and admin designation"
+    },
+    "/users/{userId}/favorites/{favoriteId}": {
+      "schema": "UserFavorite",
+      "description": "User favorite repositories collection"
+    }
+  }
+}

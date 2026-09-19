@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if caller is an admin
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'ukaleem540@gmail.com' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    // Helper function to check if caller is owner of user doc
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      // Admins can read all profiles; users can read their own
+      allow read: if request.auth != null && (isOwner(userId) || isAdmin());
+
+      // Create profile: User creating their own profile upon registration
+      allow create: if request.auth != null && isOwner(userId);
+
+      // Update profile: Admins can update any profile (to verify/approve users),
+      // users can only update non-role/non-verification fields
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (isOwner(userId) && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.isVerified == resource.data.isVerified &&
+         request.resource.data.verificationStatus == resource.data.verificationStatus)
+      );
+
+      // Delete profile: Admin only
+      allow delete: if isAdmin();
+
+      // Favorites subcollection
+      match /favorites/{favoriteId} {
+        allow read, write: if request.auth != null && isOwner(userId);
+      }
+    }
+  }
+}
