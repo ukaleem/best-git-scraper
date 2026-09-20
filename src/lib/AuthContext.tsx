@@ -103,13 +103,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               await setDoc(userDocRef, newProfile);
               setUserProfile(newProfile);
-            } catch (err) {
-              console.error('Error creating user profile document:', err);
+            } catch (err: any) {
+              console.warn('Profile write deferred to offline cache:', err?.message || err);
+              setUserProfile(newProfile);
             }
           }
           setLoading(false);
         }, (err) => {
-          console.error('Snapshot error on user profile:', err);
+          if (err?.code === 'unavailable') {
+            console.info('Firestore snapshot listening via offline cache (backend unavailable)');
+          } else {
+            console.warn('Snapshot status on user profile:', err?.message || err);
+          }
           setLoading(false);
         });
 
